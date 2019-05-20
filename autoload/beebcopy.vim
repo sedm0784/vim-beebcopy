@@ -24,6 +24,7 @@ function! beebcopy#exit_copy_mode()
     call matchdelete(b:matchid)
     unlet b:matchid
   endif
+  autocmd! beebcopy
   return ''
 endfunction
 
@@ -31,7 +32,13 @@ function! beebcopy#move(dir) abort
   " FIXME: Fix multibyte chars like in café.
   if !exists('b:position')
     let b:position = getcurpos()
+    " Leave when pressing Enter (for "backwards compatibility" with actual
+    " BBC Micros).
     inoremap <buffer> <silent> <expr> <CR> beebcopy#exit_copy_mode()
+    " Leave when exiting insert mode (for actual usefulness).
+    augroup beebcopy
+      autocmd!
+      autocmd InsertLeave <buffer> call beebcopy#exit_copy_mode()
   endif
   
   if a:dir ==# 'left'
