@@ -18,7 +18,9 @@ endfunction
 function! beebcopy#exit_copy_mode()
   if exists('b:position')
     unlet b:position
-    iunmap <buffer> <CR>
+    if b:mapped_cr
+      iunmap <buffer> <CR>
+    endif
   endif
   if exists('b:matchid')
     call matchdelete(b:matchid)
@@ -34,7 +36,12 @@ function! beebcopy#move(dir) abort
     let b:position = getcurpos()
     " Leave when pressing Enter (for "backwards compatibility" with actual
     " BBC Micros).
-    inoremap <buffer> <silent> <expr> <CR> beebcopy#exit_copy_mode()
+    let b:mapped_cr = empty(maparg('<CR>', 'i'))
+    if b:mapped_cr
+      " Don't overwrite existing mappings. Technically we could use maparg
+      " to save and restore the original mapping, but its complicated.
+      inoremap <buffer> <silent> <expr> <CR> beebcopy#exit_copy_mode()
+    endif
     " Leave when exiting insert mode (for actual usefulness).
     augroup beebcopy
       autocmd!
