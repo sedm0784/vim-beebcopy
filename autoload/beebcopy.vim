@@ -10,7 +10,20 @@ function! beebcopy#copy()
     execute "normal! \<Esc>"
   endif
 
-  let copy_char = getline(b:position[s:line])[b:position[s:column] - 1]
+  let end_position = copy(b:position)
+  while 1
+    let end_position[s:column] += 1
+    if s:first_character_byte(end_position)
+      break
+    endif
+  endwhile
+
+  " Now end_position points to the first byte of the character after the copy
+  " cursor. We want it to point to the last byte of the character under the
+  " copy cursor
+  let end_position[s:column] -= 1
+
+  let copy_char = getline(b:position[s:line])[b:position[s:column] - 1: end_position[s:column] - 1]
   call beebcopy#move('right')
   return copy_char
 endfunction
@@ -30,8 +43,45 @@ function! beebcopy#exit_copy_mode()
   return ''
 endfunction
 
+function! s:bytes_for_char() abort
+  " If the beeb cursor is on a multibyte character and we're moving
+  " horizontally, we need to alter s:column by more than one in order to move
+  " the cursor. We could do this by checking the `virtcol` of the cursor, but
+  " that requires us to mess about with either the real cursor position or
+  " marks, so instead we're going to inspect the bytes. This will only work if
+  " your 'encoding' is UTF-8, but surely most people use that these days? If
+  " we get a lot of complaints, we can implement the other version.
+  let copy_char = getline(b:position[s:line])[b:position[s:column] - 1]
+  let byte = char2nr(copy_char)
+
+  " Find size by inspecting char
+  if and(byte, 0b10000000) == 0
+    let bytes = 1
+  elseif and(byte, 0b11100000) == 0b11000000
+    let bytes = 2
+  elseif and(byte, 0b11110000) == 0b11100000
+    let bytes = 3
+  elseif and(byte, 0b11111000) == 0b11110000
+    let bytes = 4
+  else
+    echoerr("BAD CHARACTER")
+  endif
+endfunction
+
+function! s:first_character_byte(position) abort
+  " If the beeb cursor is on a multibyte character and we're moving
+  " horizontally, we need to alter s:column by more than one in order to move
+  " the cursor. We could do this by checking the `virtcol` of the cursor, but
+  " that requires us to mess about with either the real cursor position or
+  " marks, so instead we're going to inspect the bytes. This will only work if
+  " your 'encoding' is UTF-8, but surely most people use that these days? If
+  " we get a lot of complaints, we can implement the other version.
+  let copy_char = getline(a:position[s:line])[a:position[s:column] - 1]
+  let byte = char2nr(copy_char)
+  return and(byte, 0b11000000) != 0b10000000
+endfunction
+
 function! beebcopy#move(dir) abort
-  " FIXME: Fix multibyte chars like in café.
   if !exists('b:position')
     let b:position = getcurpos()
     " Leave when pressing Enter (for "backwards compatibility" with actual
@@ -47,11 +97,21 @@ function! beebcopy#move(dir) abort
       autocmd!
       autocmd InsertLeave <buffer> call beebcopy#exit_copy_mode()
   endif
-  
+
   if a:dir ==# 'left'
-    let b:position[s:column] -= 1
+    while 1
+      let b:position[s:column] -= 1
+      if s:first_character_byte(b:position)
+        break
+      endif
+    endwhile
   elseif a:dir ==# 'right'
-    let b:position[s:column] += 1
+    while 1
+      let b:position[s:column] += 1
+      if s:first_character_byte(b:position)
+        break
+      endif
+    endwhile
   elseif a:dir ==# 'up'
     let b:position[s:line] -= 1
   elseif a:dir ==# 'down'
